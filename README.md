@@ -53,30 +53,15 @@ code-fixer --eslint src/
 
 ## 配置文件
 
-Code Fixer 支持通过用户根目录下的配置文件来设置 API 密钥和其他选项。支持两种格式：YAML (`.codefixrc`) 和 JSON (`.codefixrc.json`)。
+Code Fixer 支持通过用户根目录下的配置文件来设置 API 密钥和其他选项。支持 JSON (`.codefixrc.json`)。
 
 ### 配置文件位置
 
 配置文件应该放在用户根目录下：
-- `~/.codefixrc` (YAML 格式)
+
 - `~/.codefixrc.json` (JSON 格式)
 
 ### 配置示例
-
-YAML 格式 (`.codefixrc`):
-```yaml
-openai:
-  apiKey: 你的OpenAI API密钥
-  apiBase: https://api.openai.com/v1  # 可选
-  model: gpt-3.5-turbo  # 可选
-  proxy: http://127.0.0.1:7890  # 可选
-
-aws:
-  accessKeyId: 你的AWS访问密钥ID
-  secretAccessKey: 你的AWS秘密访问密钥
-  region: us-east-1
-  model: anthropic.claude-v2  # 可选
-```
 
 JSON 格式 (`.codefixrc.json`):
 ```json

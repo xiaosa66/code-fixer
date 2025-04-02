@@ -192,6 +192,7 @@ export class AiLiteLLM {
           return result;
         } catch (error: any) {
           console.error('\n❌ OpenAI API 调用失败');
+          console.error('调用地址', process.env.OPENAI_API_BASE);
           if (error.response?.status) {
             console.error(`状态码: ${error.response.status}`);
             console.error('错误详情:');

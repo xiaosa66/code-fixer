@@ -123,8 +123,7 @@ async function fixESLintErrors(
   useBedrock: boolean = false
 ): Promise<void> {
   try {
-    // 检查必要的环境变量
-    await ConfigFinder.checkRequiredEnvVars(useBedrock);
+
 
     // 获取第一个文件的 ESLint 配置
     const eslintConfig = await ConfigFinder.getESLintConfig(files[0]);
@@ -220,6 +219,8 @@ async function fixESLintErrors(
 
 // 为 TypeScript 代码添加类型信息
 async function addTypeScriptTypes(files: string[], aiClient?: AiLiteLLM): Promise<void> {
+  
+  
   const load = loading('正在添加 TypeScript 类型信息...').start();
 
   try {
@@ -351,6 +352,11 @@ async function main() {
 
   const options = program.opts<FixOptions>();
   options.files = program.args;
+
+  if (options.ai) {
+        // 检查必要的环境变量
+        await ConfigFinder.checkRequiredEnvVars(!!options.useBedrock);
+  }
 
   if (!options.eslint && !options.typescript) {
     console.error('❌ 请至少指定一个操作：--eslint 或 --typescript');

@@ -49,11 +49,13 @@ export class ConfigFinder {
       try {
         if (await fs.access(configPath).then(() => true).catch(() => false)) {
           const content = await fs.readFile(configPath, 'utf-8');
-          const config = configFile.endsWith('.json') 
+          const config = configFile.endsWith('.json')
             ? JSON.parse(content)
             : this.parseYaml(content);
-          
-          console.log(`📝 已加载配置文件: ${configPath}`);
+
+          console.log(`📝 已加载配置文件: ${configPath}: ${
+            JSON.stringify(config, null, 2)
+          }`);
           this.codeFixConfig = config;
           return config;
         }
@@ -129,7 +131,7 @@ export class ConfigFinder {
       try {
         const content = await fs.readFile(configPath, 'utf-8');
         let config: ESLint.ConfigData;
-        
+
         if (configPath.endsWith('.json')) {
           config = JSON.parse(content);
         } else if (configPath.endsWith('.js') || configPath.endsWith('.cjs')) {
@@ -147,7 +149,7 @@ export class ConfigFinder {
             rules: yamlConfig.rules
           };
         }
-        
+
         return config;
       } catch (error) {
         console.warn(`⚠️ 读取 ESLint 配置文件失败: ${configPath}`, error);
@@ -181,27 +183,19 @@ export class ConfigFinder {
   public static async getEnvConfig(): Promise<Record<string, string>> {
     const config = await this.loadCodeFixConfig();
     if (!config) {
-      return {
-        OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
-        OPENAI_API_BASE: process.env.OPENAI_API_BASE || 'https://api.openai.com/v1',
-        OPENAI_MODEL: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
-        OPENAI_PROXY: process.env.OPENAI_PROXY || '',
-        AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || '',
-        AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || '',
-        AWS_REGION: process.env.AWS_REGION || '',
-        BEDROCK_MODEL: process.env.BEDROCK_MODEL || 'anthropic.claude-v2'
-      };
+      // 报错
+      throw new Error('未找到 .codefixrc 文件');
     }
 
     return {
-      OPENAI_API_KEY: config.openai?.apiKey || process.env.OPENAI_API_KEY || '',
-      OPENAI_API_BASE: config.openai?.apiBase || process.env.OPENAI_API_BASE || 'https://api.openai.com/v1',
-      OPENAI_MODEL: config.openai?.model || process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
-      OPENAI_PROXY: config.openai?.proxy || process.env.OPENAI_PROXY || '',
-      AWS_ACCESS_KEY_ID: config.aws?.accessKeyId || process.env.AWS_ACCESS_KEY_ID || '',
-      AWS_SECRET_ACCESS_KEY: config.aws?.secretAccessKey || process.env.AWS_SECRET_ACCESS_KEY || '',
-      AWS_REGION: config.aws?.region || process.env.AWS_REGION || '',
-      BEDROCK_MODEL: config.aws?.model || process.env.BEDROCK_MODEL || 'anthropic.claude-v2'
+      OPENAI_API_KEY: config.openai?.apiKey || '',
+      OPENAI_API_BASE: config.openai?.apiBase || 'https://api.openai.com/v1',
+      OPENAI_MODEL: config.openai?.model || 'gpt-3.5-turbo',
+      OPENAI_PROXY: config.openai?.proxy || '',
+      AWS_ACCESS_KEY_ID: config.aws?.accessKeyId || '',
+      AWS_SECRET_ACCESS_KEY: config.aws?.secretAccessKey || '',
+      AWS_REGION: config.aws?.region || '',
+      BEDROCK_MODEL: config.aws?.model || 'anthropic.claude-v2'
     };
   }
 
@@ -218,7 +212,7 @@ export class ConfigFinder {
       process.env.OPENAI_API_BASE = envConfig.OPENAI_API_BASE;
       process.env.OPENAI_MODEL = envConfig.OPENAI_MODEL;
 
-      console.log('✅ 已加载 OPENAI_API_KEY', process.env.OPENAI_API_KEY);
+      console.log('✅ 已加载 envConfig', envConfig);
     }
 
     if (useBedrock) {
