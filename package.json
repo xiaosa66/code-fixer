@@ -1,0 +1,57 @@
+{
+  "name": "code-fixer",
+  "version": "1.0.0",
+  "description": "自动修复 ESLint 错误和为 TypeScript 代码添加类型信息的工具",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "code-fixer": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "eslint",
+    "typescript",
+    "code-fix",
+    "auto-fix",
+    "ai",
+    "openai",
+    "aws",
+    "bedrock"
+  ],
+  "author": "wuzhengliu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wuzhengliu/code-fixer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wuzhengliu/code-fixer/issues"
+  },
+  "homepage": "https://github.com/wuzhengliu/code-fixer#readme",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.779.0",
+    "@typescript-eslint/eslint-plugin": "^8.29.0",
+    "@typescript-eslint/parser": "^8.29.0",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.7",
+    "eslint": "^8.56.0",
+    "inquirer": "^8.2.6",
+    "loading-cli": "^1.1.2",
+    "openai": "^4.28.0",
+    "typescript": "^5.3.3"
+  },
+  "devDependencies": {
+    "@types/eslint": "^9.6.1",
+    "@types/inquirer": "^8.2.10",
+    "@types/node": "^20.17.30",
+    "ts-node": "^10.9.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
