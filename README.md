@@ -1,108 +1,135 @@
 # Code Fixer
 
-一个自动修复 ESLint 错误和为 TypeScript 代码添加类型信息的命令行工具。
+一个智能的代码修复工具，可以自动修复 ESLint 错误并为 TypeScript 代码添加类型信息。
 
-## 功能
+## 功能特点
 
 - 自动修复 ESLint 错误
-- 自动为 TypeScript 代码添加类型信息
-- 支持指定文件或扫描整个项目
-- 交互式命令行界面
-- 支持使用 AI 进行代码修复（需要 API 密钥）
+- 为 TypeScript 代码添加类型信息
+- 支持 AI 辅助修复（使用 OpenAI 或 AWS Bedrock）
+- 自动查找和使用项目的 ESLint 配置
+- 支持自定义配置
 
 ## 安装
 
 ```bash
-# 全局安装
 npm install -g code-fixer
-
-# 或者本地安装
-npm install code-fixer
 ```
 
 ## 使用方法
 
-### 命令行选项
+### 基本用法
 
 ```bash
-# 显示帮助信息
-code-fixer --help
-
 # 修复 ESLint 错误
 code-fixer --eslint
 
-# 添加 TypeScript 类型信息
+# 添加 TypeScript 类型
 code-fixer --typescript
 
-# 同时执行两种修复
+# 同时执行两个操作
 code-fixer --eslint --typescript
-
-# 指定要处理的文件
-code-fixer --eslint --files src/index.ts src/utils.ts
-
-# 使用 AI 进行代码修复
-code-fixer --eslint --typescript --ai --secret-key YOUR_API_KEY
 ```
 
-### 环境变量
+### 使用 AI 辅助修复
 
-你可以通过以下环境变量配置 AI 功能：
+```bash
+# 使用 OpenAI
+code-fixer --eslint --ai
 
-- `LITE_LLM_API_BASE`: AI API 的基础 URL（默认为 'https://api.openai.com/v1'）
-- `LITE_LLM_MODEL`: 使用的 AI 模型（默认为 'gpt-3.5-turbo'）
+# 使用 AWS Bedrock
+code-fixer --eslint --ai --use-bedrock
+```
 
-### 交互式使用
+### 指定文件
 
-直接运行 `code-fixer` 命令，将会显示交互式菜单，让你选择要执行的操作。
+```bash
+# 修复特定文件
+code-fixer --eslint src/index.ts src/utils.ts
 
-## 配置
+# 修复特定目录下的所有文件
+code-fixer --eslint src/
+```
 
-### ESLint 配置
+## 配置文件
 
-工具会使用项目根目录下的 `.eslintrc.js` 文件作为 ESLint 配置。如果文件不存在，将使用以下默认配置：
+Code Fixer 支持通过用户根目录下的配置文件来设置 API 密钥和其他选项。支持两种格式：YAML (`.codefixrc`) 和 JSON (`.codefixrc.json`)。
 
-```js
-module.exports = {
-  parser: '@typescript-eslint/parser',
-  extends: [
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended'
-  ],
-  plugins: ['@typescript-eslint'],
-  env: {
-    node: true,
-    es2020: true
+### 配置文件位置
+
+配置文件应该放在用户根目录下：
+- `~/.codefixrc` (YAML 格式)
+- `~/.codefixrc.json` (JSON 格式)
+
+### 配置示例
+
+YAML 格式 (`.codefixrc`):
+```yaml
+openai:
+  apiKey: 你的OpenAI API密钥
+  apiBase: https://api.openai.com/v1  # 可选
+  model: gpt-3.5-turbo  # 可选
+  proxy: http://127.0.0.1:7890  # 可选
+
+aws:
+  accessKeyId: 你的AWS访问密钥ID
+  secretAccessKey: 你的AWS秘密访问密钥
+  region: us-east-1
+  model: anthropic.claude-v2  # 可选
+```
+
+JSON 格式 (`.codefixrc.json`):
+```json
+{
+  "openai": {
+    "apiKey": "你的OpenAI API密钥",
+    "apiBase": "https://api.openai.com/v1",
+    "model": "gpt-3.5-turbo",
+    "proxy": "http://127.0.0.1:7890"
   },
-  rules: {
-    '@typescript-eslint/explicit-module-boundary-types': 'off',
-    '@typescript-eslint/no-explicit-any': 'warn',
-    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-    'no-console': 'off'
+  "aws": {
+    "accessKeyId": "你的AWS访问密钥ID",
+    "secretAccessKey": "你的AWS秘密访问密钥",
+    "region": "us-east-1",
+    "model": "anthropic.claude-v2"
   }
-};
+}
 ```
 
-### TypeScript 配置
+### 配置项说明
 
-工具会使用项目根目录下的 `tsconfig.json` 文件作为 TypeScript 配置。建议在项目中包含此文件。
+#### OpenAI 配置
+- `apiKey`: OpenAI API 密钥（必需）
+- `apiBase`: API 基础地址（可选）
+- `model`: 使用的模型名称（可选）
+- `proxy`: 代理服务器地址（可选）
+
+#### AWS Bedrock 配置
+- `accessKeyId`: AWS 访问密钥 ID（必需）
+- `secretAccessKey`: AWS 秘密访问密钥（必需）
+- `region`: AWS 区域（必需）
+- `model`: Bedrock 模型名称（可选）
+
+### 注意事项
+
+1. 配置文件包含敏感信息，请确保文件权限设置正确（建议设置为 600）
+2. 如果同时存在 `.codefixrc` 和 `.codefixrc.json`，优先使用 `.codefixrc`
+3. 使用 AWS Bedrock 时需要配置所有必需的 AWS 凭证
+4. 使用 OpenAI 时需要配置 API 密钥
 
 ## 开发
 
 ```bash
-# 克隆仓库
-git clone https://github.com/yourusername/code-fixer.git
-
 # 安装依赖
-cd code-fixer
 npm install
 
-# 构建项目
+# 构建
 npm run build
 
-# 开发模式运行
-npm run dev
+# 运行测试
+npm test
 ```
 
 ## 许可证
 
-ISC 
+MIT 

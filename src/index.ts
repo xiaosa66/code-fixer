@@ -12,6 +12,9 @@ import { program } from 'commander';
 import inquirer from 'inquirer';
 import loading from 'loading-cli';
 import { AiLiteLLM } from './ai';
+import { ConfigFinder } from './config-finder';
+import { ConfigLoader } from './config-loader';
+import { LITE_LLM_CONFIG } from './config';
 
 interface FixOptions {
   eslint: boolean;
@@ -114,82 +117,93 @@ async function getFilesToProcess(options: FixOptions): Promise<string[]> {
 }
 
 // 修复 ESLint 错误
-async function fixESLintErrors(files: string[], aiClient?: AiLiteLLM): Promise<void> {
-  const load = loading('正在修复 ESLint 错误...').start();
-  const startTime = Date.now();
-  const timeout = 120000; // 2 分钟超时
-  
+async function fixESLintErrors(files: string[], useAI: boolean = false, useBedrock: boolean = false) {
   try {
-    load.text = '正在初始化 ESLint...';
+    // 检查必要的环境变量
+    const envConfig = ConfigLoader.getEnvConfig();
+    if (useBedrock) {
+      if (!envConfig.AWS_ACCESS_KEY_ID || !envConfig.AWS_SECRET_ACCESS_KEY || !envConfig.AWS_REGION) {
+        throw new Error('使用 AWS Bedrock 需要配置 AWS_ACCESS_KEY_ID、AWS_SECRET_ACCESS_KEY 和 AWS_REGION 环境变量');
+      }
+    } else if (useAI && !envConfig.OPENAI_API_KEY) {
+      throw new Error('使用 OpenAI 需要配置 OPENAI_API_KEY 环境变量');
+    }
+
+    // 获取第一个文件的 ESLint 配置
+    const eslintConfig = await ConfigFinder.getESLintConfig(files[0]);
+
+    // 初始化 ESLint
     const eslint = new ESLint({
-      fix: true,
-      overrideConfigFile: path.join(getProjectRoot(), '.eslintrc.js'),
-      cwd: getProjectRoot()
+      overrideConfig: eslintConfig,
+      fix: false,
+      cwd: path.dirname(files[0])
     });
 
-    load.text = `正在扫描 ${files.length} 个文件...`;
-    console.log(`\n🔍 正在扫描 ${files.length} 个文件...`);
+    // 运行 ESLint 检查
+    console.log('\n🔍 正在检查文件...');
     const results = await eslint.lintFiles(files);
-    
-    // 如果有 AI 客户端，尝试使用 AI 修复
-    if (aiClient) {
-      console.log(`\n📊 发现 ${results.length} 个文件需要修复`);
-      console.log(results.map(result => result.filePath));
-      
-      for (const result of results) {
-        if (result.errorCount > 0) {
-          // 检查是否超时
-          if (Date.now() - startTime > timeout) {
-            throw new Error('处理超时，请检查网络连接或增加超时时间');
-          }
-          
-          const fileName = path.basename(result.filePath);
-          load.text = `正在修复文件: ${fileName} (${result.errorCount} 个错误)`;
-          console.log(`\n📄 正在处理文件: ${fileName}`);
-          console.log(`发现 ${result.errorCount} 个错误，${result.warningCount} 个警告`);
-          
-          try {
-            const sourceText = await fs.readFile(result.filePath, 'utf-8');
-            
-            // 按错误类型分组
-            const errorsByType = result.messages.reduce((acc, msg) => {
-              const ruleId = msg.ruleId || 'unknown';
-              if (!acc[ruleId]) {
-                acc[ruleId] = [];
-              }
-              acc[ruleId].push(msg);
-              return acc;
-            }, {} as Record<string, Linter.LintMessage[]>);
 
-            // 对每种错误类型进行处理
-            for (const [ruleId, messages] of Object.entries(errorsByType)) {
-              console.log(`\n🔍 正在修复 ${ruleId} 类型的错误 (${messages.length} 个)`);
-              const fixedCode = await aiClient.fixESLintErrors(sourceText, messages);
-              await fs.writeFile(result.filePath, fixedCode, 'utf-8');
-              console.log(`✅ 完成 ${ruleId} 类型错误的修复`);
-            }
-            
-            console.log(`✅ 文件 ${fileName} 修复完成`);
-          } catch (error: any) {
-            console.error(`❌ 文件 ${fileName} 修复失败:`, error.message);
-            // 继续处理下一个文件
-            continue;
+    // 过滤出有错误的文件
+    const filesWithErrors = results.filter(result => result.errorCount > 0);
+    if (filesWithErrors.length === 0) {
+      console.log('✅ 没有发现 ESLint 错误');
+      return;
+    }
+
+    console.log(`\n📊 发现 ${filesWithErrors.length} 个文件需要修复`);
+    console.log(filesWithErrors.map(result => result.filePath));
+
+    // 初始化 AI 客户端
+    let aiClient: AiLiteLLM | null = null;
+    if (useAI) {
+      console.log('\n🤖 初始化 AI 客户端...');
+      
+      if (useBedrock) {
+        aiClient = new AiLiteLLM({
+          useBedrock: true,
+          bedrockCredentials: {
+            accessKeyId: envConfig.AWS_ACCESS_KEY_ID!,
+            secretAccessKey: envConfig.AWS_SECRET_ACCESS_KEY!,
+            region: envConfig.AWS_REGION
           }
+        });
+      } else {
+        aiClient = new AiLiteLLM({});
+      }
+    }
+
+    // 修复错误
+    for (const result of filesWithErrors) {
+      if (result.errorCount > 0) {
+        const fileName = path.basename(result.filePath);
+        console.log(`\n📄 正在处理文件: ${fileName}`);
+        console.log(`发现 ${result.errorCount} 个错误，${result.warningCount} 个警告`);
+
+        try {
+          const sourceText = await fs.readFile(result.filePath, 'utf-8');
+          let fixedCode: string;
+
+          if (aiClient) {
+            fixedCode = await aiClient.fixESLintErrors(sourceText, result.messages);
+          } else {
+            // 使用 ESLint 的自动修复
+            const fixedResults = await ESLint.outputFixes([result]);
+            fixedCode = await fs.readFile(result.filePath, 'utf-8');
+          }
+
+          await fs.writeFile(result.filePath, fixedCode, 'utf-8');
+          console.log(`✅ 文件 ${fileName} 修复完成`);
+        } catch (error: any) {
+          console.error(`❌ 文件 ${fileName} 修复失败:`, error.message);
+          continue;
         }
       }
-    } else {
-      load.text = '正在应用 ESLint 修复...';
-      await ESLint.outputFixes(results);
     }
-    
-    const errorCount = results.reduce((acc: number, result: ESLintType.LintResult) => acc + result.errorCount, 0);
-    const warningCount = results.reduce((acc: number, result: ESLintType.LintResult) => acc + result.warningCount, 0);
-    
-    load.succeed(`ESLint 修复完成! 修复了 ${errorCount} 个错误和 ${warningCount} 个警告`);
+
+    console.log('\n✨ ESLint 修复完成!');
   } catch (error: any) {
-    load.fail('ESLint 修复失败');
-    console.error('\n❌ 错误详情:', error.message);
-    throw error;
+    console.error('\n❌ 修复失败:', error.message);
+    process.exit(1);
   }
 }
 
@@ -346,25 +360,9 @@ async function main() {
       return;
     }
 
-    let aiClient: AiLiteLLM | undefined;
-    if (options.ai) {
-      if (options.useBedrock) {
-        aiClient = new AiLiteLLM({
-          useBedrock: true,
-          bedrockCredentials: {
-            accessKeyId: options.bedrockAccessKeyId || '',
-            secretAccessKey: options.bedrockSecretKey || '',
-            region: options.bedrockRegion
-          }
-        });
-      } else {
-        aiClient = new AiLiteLLM({});
-      }
-    }
-
     if (options.eslint) {
       try {
-        await fixESLintErrors(files, aiClient);
+        await fixESLintErrors(files, options.ai, options.useBedrock);
       } catch (error: any) {
         console.error('\n❌ ESLint 修复失败:');
         console.error(error.message);
@@ -374,7 +372,7 @@ async function main() {
 
     if (options.typescript) {
       try {
-        await addTypeScriptTypes(files, aiClient);
+        await addTypeScriptTypes(files, options.ai ? new AiLiteLLM({}) : undefined);
       } catch (error: any) {
         console.error('\n❌ TypeScript 类型添加失败:');
         console.error(error.message);
