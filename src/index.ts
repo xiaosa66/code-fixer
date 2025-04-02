@@ -6,7 +6,7 @@ import { execSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { ESLint } from 'eslint';
-import type { ESLint as ESLintType } from 'eslint';
+import type { ESLint as ESLintType, Linter } from 'eslint';
 import * as ts from 'typescript';
 import { program } from 'commander';
 import inquirer from 'inquirer';
@@ -150,8 +150,25 @@ async function fixESLintErrors(files: string[], aiClient?: AiLiteLLM): Promise<v
           
           try {
             const sourceText = await fs.readFile(result.filePath, 'utf-8');
-            const fixedCode = await aiClient.fixESLintErrors(sourceText, result.messages);
-            await fs.writeFile(result.filePath, fixedCode, 'utf-8');
+            
+            // 按错误类型分组
+            const errorsByType = result.messages.reduce((acc, msg) => {
+              const ruleId = msg.ruleId || 'unknown';
+              if (!acc[ruleId]) {
+                acc[ruleId] = [];
+              }
+              acc[ruleId].push(msg);
+              return acc;
+            }, {} as Record<string, Linter.LintMessage[]>);
+
+            // 对每种错误类型进行处理
+            for (const [ruleId, messages] of Object.entries(errorsByType)) {
+              console.log(`\n🔍 正在修复 ${ruleId} 类型的错误 (${messages.length} 个)`);
+              const fixedCode = await aiClient.fixESLintErrors(sourceText, messages);
+              await fs.writeFile(result.filePath, fixedCode, 'utf-8');
+              console.log(`✅ 完成 ${ruleId} 类型错误的修复`);
+            }
+            
             console.log(`✅ 文件 ${fileName} 修复完成`);
           } catch (error: any) {
             console.error(`❌ 文件 ${fileName} 修复失败:`, error.message);

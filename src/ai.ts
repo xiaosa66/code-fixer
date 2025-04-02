@@ -1,6 +1,10 @@
 import OpenAI from 'openai';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import { LITE_LLM_CONFIG } from './config';
+import { ESLint } from 'eslint';
+import type { Linter } from 'eslint';
+import * as ts from 'typescript';
+import { ASTUtils } from './ast';
 
 interface BedrockCredentials {
   accessKeyId: string;
@@ -118,163 +122,79 @@ export class AiLiteLLM {
 
   async chat(content: string): Promise<string> {
     try {
-      if (this.useBedrock) {
-        // 使用 AWS Bedrock
-        const command = new InvokeModelCommand({
-          modelId: LITE_LLM_CONFIG.bedrock.defaultModel,
-          body: JSON.stringify({
-            prompt: content,
-            max_tokens: 500,
-            temperature: 0.4
-          })
-        });
+      console.log('\n📤 发送给 AI 的请求内容:');
+      console.log('```typescript');
+      console.log(content);
+      console.log('```\n');
 
-        try {
-          process.stdout.write('🤖 AI 正在思考...');
-          const response = await (this.client as BedrockRuntimeClient).send(command);
-          const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-          process.stdout.write(' ✓\n');
-          return responseBody.completion?.trim() || '';
-        } catch (error: any) {
-          process.stdout.write(' ✗\n');
-          if (error.name === 'CredentialsProviderError') {
-            throw new Error('AWS 凭证无效或已过期，请检查 accessKeyId 和 secretAccessKey');
-          }
-          if (error.name === 'TimeoutError') {
-            throw new Error('AWS Bedrock 服务请求超时，请检查网络连接或增加超时时间');
-          }
-          if (error.name === 'NetworkingError') {
-            throw new Error('无法连接到 AWS Bedrock 服务，请检查网络连接或代理设置');
-          }
-          throw error;
-        }
-      } else {
-        // 使用 OpenAI
-        try {
-          // 先测试连接
-          await this.testConnection();
-          
-          console.log('\n🔄 正在发送请求到 OpenAI API...');
-          console.log('📤 请求内容:', content);
-          
-          const startTime = Date.now();
-          const response = await (this.client as OpenAI).chat.completions.create({
-            model: LITE_LLM_CONFIG.openai.model,
-            messages: [
-              {
-                role: 'system',
-                content: '你是一个专业的代码修复助手，擅长修复 ESLint 错误和添加 TypeScript 类型注解。'
-              },
-              {
-                role: 'user',
-                content: content
-              }
-            ],
-            max_tokens: 2000,
-            temperature: 0.2,
-            top_p: 0.95,
-            frequency_penalty: 0.5,
-            presence_penalty: 0.5
-          });
-
-          const endTime = Date.now();
-          const duration = (endTime - startTime) / 1000;
-          
-          console.log(`\n✅ 请求成功 (耗时: ${duration.toFixed(1)}秒)`);
-          console.log('📥 API 返回结果:');
-          console.log('```typescript');
-          const result = response.choices[0].message.content?.trim() || '';
-          console.log(result);
-          console.log('```\n');
-          
-          return result;
-        } catch (error: any) {
-          console.error('\n❌ OpenAI API 调用失败');
-          if (error.response?.status) {
-            console.error(`状态码: ${error.response.status}`);
-            console.error('错误详情:');
-            console.log('```json');
-            console.log(JSON.stringify(error.response.data, null, 2));
-            console.log('```\n');
-            
-            switch (error.response.status) {
-              case 401:
-                throw new Error('API 密钥无效或已过期，请检查 OPENAI_API_KEY 环境变量');
-              case 403:
-                throw new Error('没有权限访问 API，请检查 API 密钥和权限设置');
-              case 404:
-                throw new Error('API 地址无效，请检查 OPENAI_API_BASE 环境变量');
-              case 429:
-                throw new Error('API 请求次数超限，请稍后再试');
-              case 500:
-                throw new Error('OpenAI 服务器内部错误，请稍后再试');
-              case 503:
-                throw new Error('OpenAI 服务暂时不可用，请稍后再试');
-              default:
-                throw new Error(`API 请求失败，状态码: ${error.response.status}`);
-            }
-          }
-          if (error.code === 'ECONNREFUSED') {
-            throw new Error('无法连接到 OpenAI API，请检查网络连接或代理设置');
-          }
-          if (error.code === 'ETIMEDOUT') {
-            throw new Error('OpenAI API 请求超时，请检查网络连接或增加超时时间');
-          }
-          throw error;
-        }
-      }
+      // 模拟 AI 响应
+      return '// 模拟 AI 响应\nconst fixedCode = "test";';
     } catch (error: any) {
-      console.error('\n❌ AI 调用失败');
-      console.error('错误类型:', error.name);
-      console.error('错误消息:', error.message);
-      if (error.stack) {
-        console.error('错误堆栈:', error.stack);
-      }
+      console.error('\n❌ 请求失败:', error.message);
       throw error;
     }
   }
 
-  async fixESLintErrors(code: string, errors: any[]): Promise<string> {
-    console.log(`\n📝 正在修复 ${errors.length} 个 ESLint 错误...`);
-    console.log('\n❌ 错误详情:');
-    
-    const formattedErrors = errors.map((error, index) => {
-      const location = `行 ${error.line}, 列 ${error.column}`;
-      const ruleId = error.ruleId ? ` (${error.ruleId})` : '';
-      console.log(`${index + 1}. ${error.message} - 位置: ${location}${ruleId}`);
-      return `${index + 1}. ${error.message} - 位置: ${location}${ruleId}`;
-    }).join('\n');
+  async fixESLintErrors(sourceText: string, messages: Linter.LintMessage[]): Promise<string> {
+    try {
+      // 创建 TypeScript 源文件
+      const sourceFile = ts.createSourceFile(
+        'temp.ts',
+        sourceText,
+        ts.ScriptTarget.Latest,
+        true
+      );
 
-    console.log('\n📄 原始代码:');
-    console.log('```typescript');
-    console.log(code);
-    console.log('```\n');
+      // 按错误类型分组并获取相关代码模块
+      const errorGroups = ASTUtils.groupErrorsByType(sourceFile, messages);
+      let fixedText = sourceText;
 
-    const prompt = `请修复以下 TypeScript/JavaScript 代码中的 ESLint 错误。
+      // 对每种错误类型进行处理
+      for (const [ruleId, group] of errorGroups) {
+        if (group.messages.length === 0) continue;
+        
+        console.log(`\n🔍 正在修复 ${ruleId} 类型的错误 (${group.messages.length} 个)`);
+        
+        // 构建提示信息
+        const errorDescriptions = group.messages.map(err => 
+          `- ${err.message} (规则: ${err.ruleId})`
+        ).join('\n');
 
-错误列表：
-${formattedErrors}
+        const prompt = `请修复以下 TypeScript 代码中的 ESLint 错误。只返回修复后的代码，不要包含任何解释或注释。
 
-源代码：
+错误信息：
+${errorDescriptions}
+
+代码上下文：
 \`\`\`typescript
-${code}
+${group.context}
 \`\`\`
 
-请按照以下要求修复代码：
-1. 只返回修复后的完整代码，不要包含任何解释
-2. 保持代码的功能不变
-3. 确保修复所有列出的 ESLint 错误
-4. 保持代码风格一致
-5. 如果有未使用的变量，可以添加适当的使用场景或删除它们`;
+请只返回修复后的代码，保持相同的缩进和格式。`;
 
-    const fixedCode = await this.chat(prompt);
-    
-    console.log('\n📝 修复后的代码:');
-    console.log('```typescript');
-    console.log(fixedCode);
-    console.log('```\n');
-    
-    return fixedCode;
+        try {
+          // 调用 AI 模型获取修复后的代码
+          const response = await this.chat(prompt);
+          const fixedCode = response.trim();
+
+          // 替换所有相关节点
+          for (const node of group.nodes) {
+            fixedText = ASTUtils.replaceNode(fixedText, node, fixedCode);
+          }
+
+          console.log(`✅ 完成 ${ruleId} 类型错误的修复`);
+        } catch (error) {
+          console.error(`修复 ${ruleId} 类型错误时出错:`, error);
+          // 继续处理下一组错误
+          continue;
+        }
+      }
+
+      return fixedText;
+    } catch (error) {
+      console.error('修复 ESLint 错误时出错:', error);
+      return sourceText;
+    }
   }
 
   async addTypeScriptTypes(code: string): Promise<string> {
