@@ -390,7 +390,7 @@ async function main() {
     .option('--bedrock-secret-key <key>', 'AWS Bedrock Secret Key')
     .option('--bedrock-region <region>', 'AWS Bedrock Region')
     .arguments('[files...]')
-    .parse();
+    .parse(); 
 
   const options = program.opts<FixOptions>();
   options.files = program.args;
@@ -418,12 +418,20 @@ openai:
       process.exit(1);
     }
 
-    const files = options.files || await getFilesToProcess(options);
+  // 处理文件路径
+  const files = options.files 
+  ? options.files.map(file => path.resolve(process.cwd(), file))
+  : await getFilesToProcess(options);
 
-    if (files.length === 0) {
-      console.log('没有找到需要处理的文件');
-      return;
-    }
+// 检查文件是否存在
+for (const file of files) {
+  if (!require('fs').existsSync(file)) {
+    console.error(`错误: 文件 ${file} 不存在`);
+    process.exit(1);
+  }
+}
+
+  
 
     if (options.eslint) {
       try {
