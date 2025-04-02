@@ -1,29 +1,31 @@
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { Linter } from 'eslint';
+import { ESLint } from 'eslint';
 
 export class ConfigFinder {
+  private static readonly CONFIG_FILES = [
+    '.eslintrc.js',
+    '.eslintrc.cjs',
+    '.eslintrc.json',
+    '.eslintrc.yaml',
+    '.eslintrc.yml'
+  ];
+
   /**
    * 查找最近的 ESLint 配置文件
    */
-  static async findESLintConfig(filePath: string): Promise<string | null> {
-    const configFiles = [
-      '.eslintrc.js',
-      '.eslintrc.cjs',
-      '.eslintrc.json',
-      '.eslintrc.yaml',
-      '.eslintrc.yml',
-      '.eslintrc'
-    ];
-
+  public static async findESLintConfig(filePath: string): Promise<string | null> {
     let currentDir = path.dirname(filePath);
-    const rootDir = path.parse(process.cwd()).root;
+    const rootDir = path.parse(currentDir).root;
 
     while (currentDir !== rootDir) {
-      for (const configFile of configFiles) {
+      for (const configFile of this.CONFIG_FILES) {
         const configPath = path.join(currentDir, configFile);
-        if (fs.existsSync(configPath)) {
+        try {
+          await fs.access(configPath);
           return configPath;
+        } catch {
+          continue;
         }
       }
       currentDir = path.dirname(currentDir);
@@ -35,30 +37,34 @@ export class ConfigFinder {
   /**
    * 获取 ESLint 配置
    */
-  static async getESLintConfig(filePath: string): Promise<Linter.Config> {
-    // 1. 查找配置文件
+  public static async getESLintConfig(filePath: string): Promise<ESLint.ConfigData> {
     const configPath = await this.findESLintConfig(filePath);
     if (configPath) {
-      console.log(`📄 使用 ESLint 配置文件: ${configPath}`);
-      return require(configPath);
+      try {
+        const config = await import(configPath);
+        return config.default || config;
+      } catch (error) {
+        console.warn(`⚠️ 读取 ESLint 配置文件失败: ${configPath}`, error);
+      }
     }
 
-    // 2. 使用默认配置
-    console.log('📄 使用默认 ESLint 配置');
+    // 返回默认配置
     return {
       parser: '@typescript-eslint/parser',
-      plugins: ['@typescript-eslint'],
       extends: [
         'eslint:recommended',
         'plugin:@typescript-eslint/recommended'
       ],
+      plugins: ['@typescript-eslint'],
+      env: {
+        node: true,
+        es2020: true
+      },
       rules: {
-        '@typescript-eslint/no-explicit-any': 'error',
-        '@typescript-eslint/explicit-function-return-type': 'error',
-        '@typescript-eslint/no-unused-vars': 'error',
-        'eqeqeq': 'error',
-        'no-var': 'error',
-        'semi': 'error'
+        '@typescript-eslint/explicit-module-boundary-types': 'off',
+        '@typescript-eslint/no-explicit-any': 'warn',
+        '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+        'no-console': 'off'
       }
     };
   }
@@ -66,52 +72,29 @@ export class ConfigFinder {
   /**
    * 获取环境变量配置
    */
-  static getEnvConfig(): Record<string, string> {
-    const envConfig: Record<string, string> = {};
-    
-    // OpenAI 配置
-    if (process.env.OPENAI_API_KEY) {
-      envConfig.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-    }
-    if (process.env.OPENAI_API_BASE) {
-      envConfig.OPENAI_API_BASE = process.env.OPENAI_API_BASE;
-    }
-    if (process.env.OPENAI_MODEL) {
-      envConfig.OPENAI_MODEL = process.env.OPENAI_MODEL;
-    }
-    if (process.env.OPENAI_PROXY) {
-      envConfig.OPENAI_PROXY = process.env.OPENAI_PROXY;
-    }
-
-    // AWS Bedrock 配置
-    if (process.env.AWS_ACCESS_KEY_ID) {
-      envConfig.AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID;
-    }
-    if (process.env.AWS_SECRET_ACCESS_KEY) {
-      envConfig.AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY;
-    }
-    if (process.env.AWS_REGION) {
-      envConfig.AWS_REGION = process.env.AWS_REGION;
-    }
-    if (process.env.BEDROCK_MODEL) {
-      envConfig.BEDROCK_MODEL = process.env.BEDROCK_MODEL;
-    }
-
-    return envConfig;
+  public static getEnvConfig(): Record<string, string> {
+    return {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+      OPENAI_API_BASE: process.env.OPENAI_API_BASE || 'https://api.openai.com/v1',
+      OPENAI_MODEL: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+      OPENAI_PROXY: process.env.OPENAI_PROXY || '',
+      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || '',
+      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || '',
+      AWS_REGION: process.env.AWS_REGION || '',
+      BEDROCK_MODEL: process.env.BEDROCK_MODEL || 'anthropic.claude-v2'
+    };
   }
 
   /**
    * 检查必要的环境变量
    */
-  static checkRequiredEnvVars(useBedrock: boolean = false): void {
+  public static checkRequiredEnvVars(useBedrock: boolean): void {
     if (useBedrock) {
-      if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-        throw new Error('使用 AWS Bedrock 时需要设置 AWS_ACCESS_KEY_ID 和 AWS_SECRET_ACCESS_KEY 环境变量');
+      if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.AWS_REGION) {
+        throw new Error('使用 AWS Bedrock 需要配置 AWS_ACCESS_KEY_ID、AWS_SECRET_ACCESS_KEY 和 AWS_REGION 环境变量');
       }
-    } else {
-      if (!process.env.OPENAI_API_KEY) {
-        throw new Error('需要设置 OPENAI_API_KEY 环境变量');
-      }
+    } else if (!process.env.OPENAI_API_KEY) {
+      throw new Error('使用 OpenAI 需要配置 OPENAI_API_KEY 环境变量');
     }
   }
 } 

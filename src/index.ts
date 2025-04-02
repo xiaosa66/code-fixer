@@ -134,7 +134,12 @@ async function fixESLintErrors(files: string[], useAI: boolean = false, useBedro
 
     // 初始化 ESLint
     const eslint = new ESLint({
-      overrideConfig: eslintConfig,
+      overrideConfig: {
+        ...eslintConfig,
+        plugins: eslintConfig.plugins ? {
+          '@typescript-eslint': require('@typescript-eslint/eslint-plugin')
+        } : undefined
+      },
       fix: false,
       cwd: path.dirname(files[0])
     });
