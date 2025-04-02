@@ -15,6 +15,7 @@ import { AiLiteLLM } from './ai';
 import { ConfigFinder } from './config-finder';
 import { ConfigLoader } from './config-loader';
 import { LITE_LLM_CONFIG } from './config';
+import { log } from 'console';
 
 interface FixOptions {
   eslint: boolean;
@@ -63,7 +64,6 @@ async function getFilesToProcess(options: FixOptions): Promise<string[]> {
 
   // 如果指定了文件，直接使用指定的文件
   if (options.files && options.files.length > 0) {
-    console.log('指定了以下文件:', options.files);
     for (const file of options.files) {
       const fullPath = path.resolve(rootDir, file);
       try {
@@ -85,16 +85,18 @@ async function getFilesToProcess(options: FixOptions): Promise<string[]> {
       }
     }
     console.log('找到以下文件:', files);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     return files;
   }
 
   // 如果没有指定文件，扫描整个项目
   async function scanDirectory(dir: string) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
-    
+
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
-      
+
       if (entry.isDirectory()) {
         if (!CONFIG.eslint.ignorePatterns.some(pattern => fullPath.includes(pattern))) {
           await scanDirectory(fullPath);
@@ -113,39 +115,41 @@ async function getFilesToProcess(options: FixOptions): Promise<string[]> {
 
   await scanDirectory(rootDir);
   console.log('找到以下文件:', files);
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
   return files;
 }
 
-// 修复 ESLint 错误
-async function fixESLintErrors(files: string[], useAI: boolean = false, useBedrock: boolean = false) {
+async function fixESLintErrors(
+  files: string[],
+  useAI: boolean = false,
+  useBedrock: boolean = false
+): Promise<void> {
   try {
     // 检查必要的环境变量
-    const envConfig = ConfigLoader.getEnvConfig();
-    if (useBedrock) {
-      if (!envConfig.AWS_ACCESS_KEY_ID || !envConfig.AWS_SECRET_ACCESS_KEY || !envConfig.AWS_REGION) {
-        throw new Error('使用 AWS Bedrock 需要配置 AWS_ACCESS_KEY_ID、AWS_SECRET_ACCESS_KEY 和 AWS_REGION 环境变量');
-      }
-    } else if (useAI && !envConfig.OPENAI_API_KEY) {
-      throw new Error('使用 OpenAI 需要配置 OPENAI_API_KEY 环境变量');
-    }
+    await ConfigFinder.checkRequiredEnvVars(useBedrock);
 
     // 获取第一个文件的 ESLint 配置
     const eslintConfig = await ConfigFinder.getESLintConfig(files[0]);
 
+    // 获取文件的绝对路径
+    const fileDir = path.resolve(path.dirname(files[0]));
+
+    console.log('eslintConfig:', eslintConfig);
+
+    // 初始化 ESLint，直接使用从配置文件加载的配置
+    // 初始化 ESLint
     // 初始化 ESLint
     const eslint = new ESLint({
-      overrideConfig: {
-        ...eslintConfig,
-        plugins: eslintConfig.plugins ? {
-          '@typescript-eslint': require('@typescript-eslint/eslint-plugin')
-        } : undefined
-      },
-      fix: false,
-      cwd: path.dirname(files[0])
+      baseConfig: typeof eslintConfig === 'string' ? JSON.parse(eslintConfig) : eslintConfig,
+      fix: true,
+      cwd: fileDir,
     });
 
     // 运行 ESLint 检查
     console.log('\n🔍 正在检查文件...');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     const results = await eslint.lintFiles(files);
 
     // 过滤出有错误的文件
@@ -156,13 +160,17 @@ async function fixESLintErrors(files: string[], useAI: boolean = false, useBedro
     }
 
     console.log(`\n📊 发现 ${filesWithErrors.length} 个文件需要修复`);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     console.log(filesWithErrors.map(result => result.filePath));
 
     // 初始化 AI 客户端
     let aiClient: AiLiteLLM | null = null;
     if (useAI) {
       console.log('\n🤖 初始化 AI 客户端...');
-      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const envConfig = await ConfigFinder.getEnvConfig();
+
       if (useBedrock) {
         aiClient = new AiLiteLLM({
           useBedrock: true,
@@ -179,43 +187,44 @@ async function fixESLintErrors(files: string[], useAI: boolean = false, useBedro
 
     // 修复错误
     for (const result of filesWithErrors) {
-      if (result.errorCount > 0) {
-        const fileName = path.basename(result.filePath);
-        console.log(`\n📄 正在处理文件: ${fileName}`);
-        console.log(`发现 ${result.errorCount} 个错误，${result.warningCount} 个警告`);
+      const fileName = path.basename(result.filePath);
+      console.log(`\n📄 正在处理文件: ${fileName}`);
+      console.log(`发现 ${result.errorCount} 个错误，${result.warningCount} 个警告`);
 
-        try {
-          const sourceText = await fs.readFile(result.filePath, 'utf-8');
-          let fixedCode: string;
+      try {
+        const sourceText = await fs.readFile(result.filePath, 'utf-8');
+        let fixedCode: string;
 
-          if (aiClient) {
-            fixedCode = await aiClient.fixESLintErrors(sourceText, result.messages);
-          } else {
-            // 使用 ESLint 的自动修复
-            const fixedResults = await ESLint.outputFixes([result]);
-            fixedCode = await fs.readFile(result.filePath, 'utf-8');
-          }
-
-          await fs.writeFile(result.filePath, fixedCode, 'utf-8');
-          console.log(`✅ 文件 ${fileName} 修复完成`);
-        } catch (error: any) {
-          console.error(`❌ 文件 ${fileName} 修复失败:`, error.message);
-          continue;
+        if (aiClient) {
+          fixedCode = await aiClient.fixESLintErrors(sourceText, result.messages);
+        } else {
+          // 使用 ESLint 的自动修复（注意：outputFixes 为同步方法）
+          ESLint.outputFixes([result]);
+          fixedCode = await fs.readFile(result.filePath, 'utf-8');
         }
+
+        await fs.writeFile(result.filePath, fixedCode, 'utf-8');
+        console.log(`✅ 文件 ${fileName} 修复完成`);
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error(`❌ 文件 ${fileName} 修复失败: ${errorMsg}`);
+        continue;
       }
     }
 
     console.log('\n✨ ESLint 修复完成!');
-  } catch (error: any) {
-    console.error('\n❌ 修复失败:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('\n❌ 修复失败:', errorMsg);
     process.exit(1);
   }
 }
 
+
 // 为 TypeScript 代码添加类型信息
 async function addTypeScriptTypes(files: string[], aiClient?: AiLiteLLM): Promise<void> {
   const load = loading('正在添加 TypeScript 类型信息...').start();
-  
+
   try {
     console.log(`\n🔍 正在处理 ${files.length} 个文件...`);
     for (const file of files) {
@@ -223,7 +232,7 @@ async function addTypeScriptTypes(files: string[], aiClient?: AiLiteLLM): Promis
       load.text = `正在处理文件: ${fileName}`;
       console.log(`\n📄 正在处理文件: ${fileName}`);
       const sourceText = await fs.readFile(file, 'utf-8');
-      
+
       if (aiClient) {
         // 使用 AI 添加类型
         load.text = `正在使用 AI 为 ${fileName} 添加类型注解...`;
@@ -312,7 +321,7 @@ async function addTypeScriptTypes(files: string[], aiClient?: AiLiteLLM): Promis
 
         const result = ts.transform(sourceFile, [transformer]);
         const newText = printer.printFile(result.transformed[0] as ts.SourceFile);
-        
+
         if (newText !== sourceText) {
           await fs.writeFile(file, newText, 'utf-8');
           console.log(`✅ 文件 ${fileName} 处理完成`);
@@ -321,7 +330,7 @@ async function addTypeScriptTypes(files: string[], aiClient?: AiLiteLLM): Promis
         }
       }
     }
-    
+
     load.succeed('TypeScript 类型添加完成!');
   } catch (error) {
     load.fail('TypeScript 类型添加失败');
@@ -332,7 +341,7 @@ async function addTypeScriptTypes(files: string[], aiClient?: AiLiteLLM): Promis
 // 主函数
 async function main() {
   program
-    .version('1.0.0')
+    .version('1.0.1')
     .option('-e, --eslint', '修复 ESLint 错误')
     .option('-t, --typescript', '添加 TypeScript 类型')
     .option('--ai', '使用 AI 辅助修复')
@@ -351,15 +360,21 @@ async function main() {
     process.exit(1);
   }
 
-  // 检查环境变量
-  if (options.ai && !process.env.OPENAI_API_KEY) {
-    console.error('❌ 使用 AI 功能时需要设置 OPENAI_API_KEY 环境变量');
-    process.exit(1);
-  }
-
   try {
+    // 检查环境变量
+    const envConfig = await ConfigFinder.getEnvConfig();
+    if (options.ai && !envConfig.OPENAI_API_KEY) {
+      console.error('❌ 使用 AI 功能时需要配置 OpenAI API 密钥');
+      console.error('请在 ~/.codefixrc 中添加配置：');
+      console.error(`
+openai:
+  apiKey: 你的OpenAI API密钥
+      `);
+      process.exit(1);
+    }
+
     const files = options.files || await getFilesToProcess(options);
-    
+
     if (files.length === 0) {
       console.log('没有找到需要处理的文件');
       return;
@@ -393,4 +408,4 @@ async function main() {
   }
 }
 
-main(); 
+main();

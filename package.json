@@ -1,6 +1,6 @@
 {
   "name": "code-fixer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "自动修复 ESLint 错误和为 TypeScript 代码添加类型信息的工具",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -49,6 +49,7 @@
     "@types/eslint": "^9.6.1",
     "@types/inquirer": "^8.2.10",
     "@types/node": "^20.17.30",
+    "eslint-config-airbnb-base": "^15.0.0",
     "ts-node": "^10.9.2"
   },
   "engines": {
