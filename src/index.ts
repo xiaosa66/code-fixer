@@ -13,6 +13,7 @@ import { program } from 'commander';
 import loading from 'loading-cli';
 import { AiLiteLLM } from './ai';
 import { ConfigFinder } from './config-finder';
+import { log } from 'console';
 
 interface FixOptions {
   eslint: boolean;
@@ -189,10 +190,49 @@ async function fixESLintErrors(
 
       try {
         const sourceText = await fs.readFile(result.filePath, 'utf-8');
+        const sourceFile = ts.createSourceFile(
+          fileName,
+          sourceText,
+          ts.ScriptTarget.Latest,
+          true
+        );
         let fixedCode: string;
 
         if (aiClient) {
-          let aiResponse = await aiClient.fixESLintErrors(sourceText, result.messages);
+          // 为每个错误提取相关代码片段
+          const errorSnippets = result.messages.map(message => {
+            const { line, column } = message;
+            const start = ts.getLineAndCharacterOfPosition(sourceFile, sourceFile.getPositionOfLineAndCharacter(line - 1, column - 1));
+            const end = ts.getLineAndCharacterOfPosition(sourceFile, sourceFile.getPositionOfLineAndCharacter(line, 0));
+            
+            console.log(`错误位置: 第${line}行, 第${column}列`);
+            console.log(`错误信息: ${message.message}`);
+            console.log(`start, end: `, {
+              start,
+              end
+            });
+
+            // 获取错误行及其前后2行作为上下文
+            const errorStartPos = sourceFile.getPositionOfLineAndCharacter(line - 1, column - 1);
+            const errorEndPos = sourceFile.getPositionOfLineAndCharacter(line, 0);
+            
+
+            // 获取错误行及其前后2行作为上下文
+            const startPos = Math.max(0, errorStartPos - 100); // 向前100字符
+            const endPos = Math.min(sourceText.length, errorEndPos + 100); // 向后100字符
+            return {
+              message: message.message,
+              ruleId: message.ruleId || '未知',
+              code: sourceText.substring(startPos, endPos),
+              line,
+              column
+            };
+          });
+
+          console.log('errorSnippets:', errorSnippets);
+
+          // 发送错误片段给AI修复
+          let aiResponse = await aiClient.fixESLintErrors(errorSnippets);
           // 移除代码块标记
           fixedCode = aiResponse.replace(/^```(typescript)?\n/, '').replace(/\n```$/, '');
         } else {

@@ -216,6 +216,14 @@ export class ConfigFinder {
     }
 
     if (useBedrock) {
+      if (envConfig.BEDROCK_MODEL) {
+        
+        process.env.BEDROCK_MODEL = envConfig.BEDROCK_MODEL;
+        
+
+
+      }
+
       if (!envConfig.AWS_ACCESS_KEY_ID || !envConfig.AWS_SECRET_ACCESS_KEY || !envConfig.AWS_REGION) {
         throw new Error('使用 AWS Bedrock 需要配置 AWS_ACCESS_KEY_ID、AWS_SECRET_ACCESS_KEY 和 AWS_REGION');
       }

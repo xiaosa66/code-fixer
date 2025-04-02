@@ -237,65 +237,53 @@ export class AiLiteLLM {
     }
   }
 
-  async fixESLintErrors(sourceText: string, messages: Linter.LintMessage[]): Promise<string> {
-    try {
-      // 创建 TypeScript 源文件
-      const sourceFile = ts.createSourceFile(
-        'temp.ts',
-        sourceText,
-        ts.ScriptTarget.Latest,
-        true
-      );
+  async fixESLintErrors(errorSnippets: Array<{
+    message: string;
+    ruleId?: string;
+    code: string;
+    line: number;
+    column: number;
+  }>): Promise<string> {
+    // 构建错误描述
+    const errorDescriptions = errorSnippets.map(snippet => 
+      `错误位置: 第${snippet.line}行, 第${snippet.column}列\n` +
+      `规则ID: ${snippet.ruleId || '未知'}\n` +
+      `错误信息: ${snippet.message}\n` +
+      `相关代码:\n${snippet.code}`
+    ).join('\n\n');
 
-      // 按错误类型分组并获取相关代码模块
-      const errorGroups = ASTUtils.groupErrorsByType(sourceFile, messages);
-      let fixedText = sourceText;
+    const prompt = `请修复以下ESLint错误:\n\n${errorDescriptions}\n\n` +
+      `请只返回修复后的代码片段，不要包含解释或其他内容。`;
 
-      // 对每种错误类型进行处理
-      for (const [ruleId, group] of errorGroups) {
-        if (group.messages.length === 0) continue;
-        
-        console.log(`\n🔍 正在修复 ${ruleId} 类型的错误 (${group.messages.length} 个)`);
-        
-        // 构建提示信息
-        const errorDescriptions = group.messages.map(err => 
-          `- ${err.message} (规则: ${err.ruleId})`
-        ).join('\n');
-
-        const prompt = `请修复以下 TypeScript 代码中的 ESLint 错误。只返回修复后的代码，不要包含任何解释或注释。
-
-错误信息：
-${errorDescriptions}
-
-代码上下文：
-\`\`\`typescript
-${group.context}
-\`\`\`
-
-请只返回修复后的代码，保持相同的缩进和格式。`;
-
-        try {
-          // 调用 AI 模型获取修复后的代码
-          const response = await this.chat(prompt);
-          const fixedCode = response.trim();
-
-          // 替换所有相关节点
-          for (const node of group.nodes) {
-            fixedText = ASTUtils.replaceNode(fixedText, node, fixedCode);
+    if (this.useBedrock) {
+      // AWS Bedrock 实现
+      const command = new InvokeModelCommand({
+        modelId: process.env.BEDROCK_MODEL || 'anthropic.claude-v2',
+        body: JSON.stringify({
+          prompt: prompt,
+          max_tokens: 2000,
+          temperature: 0.2
+        })
+      });
+      const response = await (this.client as BedrockRuntimeClient).send(command);
+      return new TextDecoder().decode(response.body);
+    } else {
+      // OpenAI 实现
+      const response = await (this.client as OpenAI).chat.completions.create({
+        model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个专业的代码修复助手，擅长修复 ESLint 错误。请只返回修复后的代码，不要包含解释或其他内容。'
+          },
+          {
+            role: 'user',
+            content: prompt
           }
-
-          console.log(`✅ 完成 ${ruleId} 类型错误的修复`);
-        } catch (error) {
-          console.error(`修复 ${ruleId} 类型错误时出错:`, error);
-          // 继续处理下一组错误
-          continue;
-        }
-      }
-
-      return fixedText;
-    } catch (error) {
-      console.error('修复 ESLint 错误时出错:', error);
-      return sourceText;
+        ],
+        temperature: 0.2
+      });
+      return response.choices[0]?.message?.content || '';
     }
   }
 
@@ -315,4 +303,4 @@ ${code}
 
     return this.chat(prompt);
   }
-} 
+}
