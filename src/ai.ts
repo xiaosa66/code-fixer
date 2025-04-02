@@ -40,7 +40,7 @@ export class AiLiteLLM {
       // 从环境变量中获取 API 密钥
       const apiKey = process.env.OPENAI_API_KEY
       if (!apiKey) {
-        throw new Error('未设置 OPENAI_API_KEY 环境变量');
+        throw new Error(`未设置 OPENAI_API_KEY 环境变量 ${apiKey}` );
       }
 
       console.log('\n🔌 正在连接 OpenAI API...');
