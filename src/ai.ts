@@ -1,7 +1,5 @@
 import OpenAI from 'openai';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
-import { LITE_LLM_CONFIG } from './config';
-import { ESLint } from 'eslint';
 import type { Linter } from 'eslint';
 import * as ts from 'typescript';
 import { ASTUtils } from './ast';
@@ -32,7 +30,7 @@ export class AiLiteLLM {
 
       // 初始化 AWS Bedrock 客户端
       this.client = new BedrockRuntimeClient({
-        region: bedrockCredentials.region || LITE_LLM_CONFIG.bedrock.defaultRegion,
+        region: bedrockCredentials.region || process.env.AWS_REGION || 'us-east-1',
         credentials: {
           accessKeyId: bedrockCredentials.accessKeyId,
           secretAccessKey: bedrockCredentials.secretAccessKey
@@ -40,22 +38,22 @@ export class AiLiteLLM {
       });
     } else {
       // 从环境变量中获取 API 密钥
-      const apiKey = LITE_LLM_CONFIG.openai.apiKey;
+      const apiKey = process.env.OPENAI_API_KEY
       if (!apiKey) {
         throw new Error('未设置 OPENAI_API_KEY 环境变量');
       }
 
       console.log('\n🔌 正在连接 OpenAI API...');
-      console.log('API 地址:', LITE_LLM_CONFIG.openai.apiBase);
-      console.log('模型:', LITE_LLM_CONFIG.openai.model);
-      if (LITE_LLM_CONFIG.openai.proxy) {
-        console.log('代理地址:', LITE_LLM_CONFIG.openai.proxy);
+      console.log('API 地址:', process.env.OPENAI_API_BASE);
+      console.log('模型:', process.env.OPENAI_MODEL);
+      if (process.env.OPENAI_PROXY) {
+        console.log('代理地址:',process.env.OPENAI_PROXY);
       }
 
       // 初始化 OpenAI 客户端
       const clientConfig: any = {
         apiKey,
-        baseURL: LITE_LLM_CONFIG.openai.apiBase,
+        baseURL: process.env.OPENAI_API_BASE,
         timeout: 120000,
         maxRetries: 5,
         defaultHeaders: {
@@ -64,9 +62,9 @@ export class AiLiteLLM {
       };
 
       // 如果设置了代理，添加代理配置
-      if (LITE_LLM_CONFIG.openai.proxy) {
+      if (process.env.OPENAI_PROXY) {
         const { HttpsProxyAgent } = require('https-proxy-agent');
-        clientConfig.httpAgent = new HttpsProxyAgent(LITE_LLM_CONFIG.openai.proxy);
+        clientConfig.httpAgent = new HttpsProxyAgent(process.env.OPENAI_PROXY);
       }
 
       this.client = new OpenAI(clientConfig);
@@ -125,7 +123,7 @@ export class AiLiteLLM {
       if (this.useBedrock) {
         // 使用 AWS Bedrock
         const command = new InvokeModelCommand({
-          modelId: LITE_LLM_CONFIG.bedrock.defaultModel,
+          modelId: process.env.BEDROCK_MODEL || 'anthropic.claude-v2',
           body: JSON.stringify({
             prompt: content,
             max_tokens: 500,
@@ -163,7 +161,7 @@ export class AiLiteLLM {
           
           const startTime = Date.now();
           const response = await (this.client as OpenAI).chat.completions.create({
-            model: LITE_LLM_CONFIG.openai.model,
+            model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
             messages: [
               {
                 role: 'system',
