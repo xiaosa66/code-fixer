@@ -217,6 +217,8 @@ export class ConfigFinder {
       process.env.OPENAI_API_KEY = envConfig.OPENAI_API_KEY;
       process.env.OPENAI_API_BASE = envConfig.OPENAI_API_BASE;
       process.env.OPENAI_MODEL = envConfig.OPENAI_MODEL;
+
+      console.log('✅ 已加载 OPENAI_API_KEY', process.env.OPENAI_API_KEY);
     }
 
     if (useBedrock) {
