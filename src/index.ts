@@ -192,7 +192,9 @@ async function fixESLintErrors(
         let fixedCode: string;
 
         if (aiClient) {
-          fixedCode = await aiClient.fixESLintErrors(sourceText, result.messages);
+          let aiResponse = await aiClient.fixESLintErrors(sourceText, result.messages);
+          // 移除代码块标记
+          fixedCode = aiResponse.replace(/^```(typescript)?\n/, '').replace(/\n```$/, '');
         } else {
           // 使用 ESLint 的自动修复（注意：outputFixes 为同步方法）
           ESLint.outputFixes([result]);
