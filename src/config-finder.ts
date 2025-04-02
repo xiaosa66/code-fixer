@@ -209,8 +209,15 @@ export class ConfigFinder {
    * 检查必要的环境变量
    */
   public static async checkRequiredEnvVars(useBedrock: boolean): Promise<void> {
-    const config = await this.loadCodeFixConfig();
+
     const envConfig = await this.getEnvConfig();
+
+    if (envConfig.OPENAI_API_KEY) {
+      // 写入到process.env
+      process.env.OPENAI_API_KEY = envConfig.OPENAI_API_KEY;
+      process.env.OPENAI_API_BASE = envConfig.OPENAI_API_BASE;
+      process.env.OPENAI_MODEL = envConfig.OPENAI_MODEL;
+    }
 
     if (useBedrock) {
       if (!envConfig.AWS_ACCESS_KEY_ID || !envConfig.AWS_SECRET_ACCESS_KEY || !envConfig.AWS_REGION) {

@@ -6,16 +6,13 @@ import { execSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { ESLint } from 'eslint';
-import type { ESLint as ESLintType, Linter } from 'eslint';
+
 import * as ts from 'typescript';
 import { program } from 'commander';
-import inquirer from 'inquirer';
+
 import loading from 'loading-cli';
 import { AiLiteLLM } from './ai';
 import { ConfigFinder } from './config-finder';
-import { ConfigLoader } from './config-loader';
-import { LITE_LLM_CONFIG } from './config';
-import { log } from 'console';
 
 interface FixOptions {
   eslint: boolean;
