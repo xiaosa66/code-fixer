@@ -212,21 +212,27 @@ async function fixESLintErrors(
               end
             });
 
-            // 获取错误行及其前后2行作为上下文
-            const errorStartPos = sourceFile.getPositionOfLineAndCharacter(line - 1, column - 1);
-            const errorEndPos = sourceFile.getPositionOfLineAndCharacter(line, 0);
-            
+            // 获取错误行及其上下文
+            const errorLineStartPos = sourceFile.getPositionOfLineAndCharacter(line - 1, 0);
+            const errorLineEndPos = sourceFile.getPositionOfLineAndCharacter(line, 0);
+            const errorLineCode = sourceText.substring(errorLineStartPos, errorLineEndPos).trim();
 
-            // 获取错误行及其前后2行作为上下文
-            const startPos = Math.max(0, errorStartPos - 100); // 向前100字符
-            const endPos = Math.min(sourceText.length, errorEndPos + 100); // 向后100字符
-            return {
+            // 获取上下文（上下各一行）
+            const contextStartPos = sourceFile.getPositionOfLineAndCharacter(Math.max(0, line - 2), 0);
+            const contextEndPos = sourceFile.getPositionOfLineAndCharacter(line + 1, 0);
+            const contextCode = sourceText.substring(contextStartPos, contextEndPos).trim();
+
+            // 构建错误信息
+            const errorInfo = {
               message: message.message,
               ruleId: message.ruleId || '未知',
-              code: sourceText.substring(startPos, endPos),
-              line,
-              column
+              code: errorLineCode,
+              context: contextCode,
+              line: line,
+              column: column
             };
+
+            return errorInfo;
           });
 
           console.log('errorSnippets:', errorSnippets);

@@ -241,6 +241,7 @@ export class AiLiteLLM {
     message: string;
     ruleId?: string;
     code: string;
+    context: string;
     line: number;
     column: number;
   }>): Promise<string> {
@@ -249,11 +250,12 @@ export class AiLiteLLM {
       `错误位置: 第${snippet.line}行, 第${snippet.column}列\n` +
       `规则ID: ${snippet.ruleId || '未知'}\n` +
       `错误信息: ${snippet.message}\n` +
-      `相关代码:\n${snippet.code}`
+      `上下文代码:\n${snippet.context}\n` +
+      `需要修改的代码行:\n${snippet.code}`
     ).join('\n\n');
 
-    const prompt = `请修复以下ESLint错误:\n\n${errorDescriptions}\n\n` +
-      `请直接返回修复后的代码片段，不要包含任何 markdown 格式标记（如 \`\`\`typescript 或 \`\`\`），也不要包含解释或其他内容。`;
+    const prompt = `请修复以下ESLint错误。注意：你只需要返回修改后的那一行代码，不要返回上下文代码。\n\n${errorDescriptions}\n\n` +
+      `请直接返回修复后的代码行，不要包含任何 markdown 格式标记，也不要包含解释或其他内容。`;
 
     let response: string;
     if (this.useBedrock) {
@@ -275,7 +277,7 @@ export class AiLiteLLM {
         messages: [
           {
             role: 'system',
-            content: '你是一个专业的代码修复助手，擅长修复 ESLint 错误。请只返回修复后的代码，不要包含解释或其他内容。'
+            content: '你是一个专业的代码修复助手，擅长修复 ESLint 错误。请只返回修复后的那一行代码，不要返回上下文代码，不要包含任何 markdown 格式标记，也不要包含解释或其他内容。'
           },
           {
             role: 'user',
@@ -302,23 +304,7 @@ export class AiLiteLLM {
     console.log(response);
     console.log('```\n');
 
-    // 构建修复后的代码
-    let fixedCode = '';
-    let lastEndLine = 0;
-
-    for (const snippet of errorSnippets) {
-      // 如果当前错误与上一个错误之间有代码，保留原代码
-      if (snippet.line > lastEndLine + 1) {
-        const originalLines = snippet.code.split('\n');
-        fixedCode += originalLines.slice(0, snippet.line - lastEndLine - 1).join('\n') + '\n';
-      }
-
-      // 添加修复后的代码
-      fixedCode += response + '\n';
-      lastEndLine = snippet.line;
-    }
-
-    return fixedCode;
+    return response;
   }
 
   async addTypeScriptTypes(code: string): Promise<string> {
