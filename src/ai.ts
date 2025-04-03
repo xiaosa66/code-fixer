@@ -313,20 +313,60 @@ export class AiLiteLLM {
     // 按行号排序
     fixedLines.sort((a, b) => a.line - b.line);
 
+    // 获取所有原始代码行
+    const allOriginalLines = errorSnippets.reduce((lines, snippet) => {
+      const snippetLines = snippet.code.split('\n');
+      // 确保不重复添加相同的行
+      snippetLines.forEach((line, index) => {
+        const lineNumber = snippet.line - snippetLines.length + index + 1;
+        if (!lines[lineNumber]) {
+          lines[lineNumber] = line;
+        }
+      });
+      return lines;
+    }, {} as Record<number, string>);
+
     // 构建修复后的代码
     let fixedCode = '';
-    let lastEndLine = 0;
+    let lastLine = 0;
 
-    for (const fixedLine of fixedLines) {
-      // 如果当前错误与上一个错误之间有代码，保留原代码
-      if (fixedLine.line > lastEndLine + 1) {
-        const originalLines = errorSnippets[0].code.split('\n');
-        fixedCode += originalLines.slice(0, fixedLine.line - lastEndLine - 1).join('\n') + '\n';
+    // 处理文件开头的代码
+    const firstErrorLine = fixedLines[0]?.line || 0;
+    if (firstErrorLine > 1) {
+      for (let i = 1; i < firstErrorLine; i++) {
+        if (allOriginalLines[i]) {
+          fixedCode += allOriginalLines[i] + '\n';
+        }
       }
+    }
 
-      // 添加修复后的代码
+    // 处理错误行和错误行之间的代码
+    for (let i = 0; i < fixedLines.length; i++) {
+      const fixedLine = fixedLines[i];
+      const nextFixedLine = fixedLines[i + 1];
+      
+      // 添加修复后的错误行
       fixedCode += fixedLine.fixedCode + '\n';
-      lastEndLine = fixedLine.line;
+      
+      // 如果还有下一个错误行，处理两个错误行之间的代码
+      if (nextFixedLine) {
+        for (let j = fixedLine.line + 1; j < nextFixedLine.line; j++) {
+          if (allOriginalLines[j]) {
+            fixedCode += allOriginalLines[j] + '\n';
+          }
+        }
+      }
+    }
+
+    // 处理最后一个错误行之后的代码
+    const lastErrorLine = fixedLines[fixedLines.length - 1]?.line || 0;
+    const maxLine = Math.max(...Object.keys(allOriginalLines).map(Number));
+    if (lastErrorLine < maxLine) {
+      for (let i = lastErrorLine + 1; i <= maxLine; i++) {
+        if (allOriginalLines[i]) {
+          fixedCode += allOriginalLines[i] + '\n';
+        }
+      }
     }
 
     return fixedCode;
