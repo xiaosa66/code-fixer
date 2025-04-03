@@ -343,14 +343,72 @@ export class AiLiteLLM {
     console.log('```typescript');
     console.log(code);
     console.log('```\n');
-    
-    const prompt = `请为以下 JavaScript/TypeScript 代码添加适当的类型注解。代码：
-\`\`\`typescript
-${code}
-\`\`\`
-
-请只返回添加了类型注解的代码，不要包含任何解释。`;
-
-    return this.chat(prompt);
+  
+    // 使用 TypeScript 解析源代码
+    const sourceFile = ts.createSourceFile('temp.ts', code, ts.ScriptTarget.Latest, true);
+  
+    // 自定义实现：查找缺少返回类型注解的函数节点
+    type NodeInfo = {
+      range: { start: number; end: number };
+      snippet: string;
+      line: number;
+    };
+    const nodesNeedingAnnotation: NodeInfo[] = [];
+  
+    function visit(node: ts.Node) {
+      // 这里示例只处理函数声明、函数表达式和箭头函数，且要求没有返回类型注解
+      if (
+        (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) &&
+        !node.type
+      ) {
+        const start = node.getStart(sourceFile);
+        const end = node.getEnd();
+        const snippet = code.substring(start, end);
+        const { line } = sourceFile.getLineAndCharacterOfPosition(start);
+        nodesNeedingAnnotation.push({ range: { start, end }, snippet, line: line + 1 });
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+  
+    if (nodesNeedingAnnotation.length === 0) {
+      console.log('✅ 没有发现需要添加类型注解的模块');
+      return code;
+    }
+  
+    console.log(`\n📊 发现 ${nodesNeedingAnnotation.length} 个模块需要添加类型注解`);
+  
+    // 对每个需要添加类型注解的模块，调用 AI 单独修复
+    const fixedNodes = await Promise.all(nodesNeedingAnnotation.map(async (nodeInfo) => {
+      const prompt = `请为以下代码添加适当的 TypeScript 类型注解。请只返回添加了类型注解的代码，不要包含任何解释或上下文。\n\n代码：\n\`\`\`typescript\n${nodeInfo.snippet}\n\`\`\``;
+      let fixedSnippet = await this.chat(prompt);
+      // 移除可能存在的 Markdown 代码块标记，并去除首尾空白
+      fixedSnippet = fixedSnippet.replace(/^```(typescript)?\n/, '').replace(/\n```$/, '').trim();
+  
+      console.log(`\n📝 第 ${nodeInfo.line} 行代码模块修复对比:`);
+      console.log('\n原始代码:');
+      console.log('```typescript');
+      console.log(nodeInfo.snippet);
+      console.log('```\n');
+      console.log('修复后代码:');
+      console.log('```typescript');
+      console.log(fixedSnippet);
+      console.log('```\n');
+  
+      return {
+        range: nodeInfo.range,
+        fixedSnippet
+      };
+    }));
+  
+    // 为避免替换过程中影响后续节点的索引，按 range.start 倒序替换
+    fixedNodes.sort((a, b) => b.range.start - a.range.start);
+  
+    let fixedCode = code;
+    for (const { range, fixedSnippet } of fixedNodes) {
+      fixedCode = fixedCode.slice(0, range.start) + fixedSnippet + fixedCode.slice(range.end);
+    }
+  
+    return fixedCode;
   }
 }
