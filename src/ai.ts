@@ -255,6 +255,7 @@ export class AiLiteLLM {
     const prompt = `请修复以下ESLint错误:\n\n${errorDescriptions}\n\n` +
       `请只返回修复后的代码片段，不要包含解释或其他内容。`;
 
+    let response: string;
     if (this.useBedrock) {
       // AWS Bedrock 实现
       const command = new InvokeModelCommand({
@@ -265,11 +266,11 @@ export class AiLiteLLM {
           temperature: 0.2
         })
       });
-      const response = await (this.client as BedrockRuntimeClient).send(command);
-      return new TextDecoder().decode(response.body);
+      const bedrockResponse = await (this.client as BedrockRuntimeClient).send(command);
+      response = new TextDecoder().decode(bedrockResponse.body);
     } else {
       // OpenAI 实现
-      const response = await (this.client as OpenAI).chat.completions.create({
+      const openaiResponse = await (this.client as OpenAI).chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
         messages: [
           {
@@ -283,8 +284,29 @@ export class AiLiteLLM {
         ],
         temperature: 0.2
       });
-      return response.choices[0]?.message?.content || '';
+      response = openaiResponse.choices[0]?.message?.content || '';
     }
+
+    // 处理 markdown 格式
+    response = response.replace(/^```(typescript)?\n/, '').replace(/\n```$/, '').trim();
+
+    // 构建修复后的代码
+    let fixedCode = '';
+    let lastEndLine = 0;
+
+    for (const snippet of errorSnippets) {
+      // 如果当前错误与上一个错误之间有代码，保留原代码
+      if (snippet.line > lastEndLine + 1) {
+        const originalLines = snippet.code.split('\n');
+        fixedCode += originalLines.slice(0, snippet.line - lastEndLine - 1).join('\n') + '\n';
+      }
+
+      // 添加修复后的代码
+      fixedCode += response + '\n';
+      lastEndLine = snippet.line;
+    }
+
+    return fixedCode;
   }
 
   async addTypeScriptTypes(code: string): Promise<string> {
