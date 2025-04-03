@@ -245,79 +245,88 @@ export class AiLiteLLM {
     line: number;
     column: number;
   }>): Promise<string> {
-    // 构建错误描述
-    const errorDescriptions = errorSnippets.map(snippet => 
-      `错误位置: 第${snippet.line}行, 第${snippet.column}列\n` +
-      `规则ID: ${snippet.ruleId || '未知'}\n` +
-      `错误信息: ${snippet.message}\n` +
-      `上下文代码:\n${snippet.context}\n` +
-      `需要修改的代码行:\n${snippet.code}`
-    ).join('\n\n');
+    // 为每个错误单独获取修复结果
+    const fixedLines = await Promise.all(errorSnippets.map(async (snippet) => {
+      const errorDescription = 
+        `错误位置: 第${snippet.line}行, 第${snippet.column}列\n` +
+        `规则ID: ${snippet.ruleId || '未知'}\n` +
+        `错误信息: ${snippet.message}\n` +
+        `上下文代码:\n${snippet.context}\n` +
+        `需要修改的代码行:\n${snippet.code}`;
 
-    const prompt = `请修复以下ESLint错误。注意：你只需要返回修改后的那一行代码，不要返回上下文代码。\n\n${errorDescriptions}\n\n` +
-      `请直接返回修复后的代码行，不要包含任何 markdown 格式标记，也不要包含解释或其他内容。`;
+      const prompt = `请修复以下ESLint错误。注意：你只需要返回修改后的那一行代码，不要返回上下文代码。\n\n${errorDescription}\n\n` +
+        `请直接返回修复后的代码行，不要包含任何 markdown 格式标记，也不要包含解释或其他内容。`;
 
-    let response: string;
-    if (this.useBedrock) {
-      // AWS Bedrock 实现
-      const command = new InvokeModelCommand({
-        modelId: process.env.BEDROCK_MODEL || 'anthropic.claude-v2',
-        body: JSON.stringify({
-          prompt: prompt,
-          max_tokens: 2000,
+      let response: string;
+      if (this.useBedrock) {
+        // AWS Bedrock 实现
+        const command = new InvokeModelCommand({
+          modelId: process.env.BEDROCK_MODEL || 'anthropic.claude-v2',
+          body: JSON.stringify({
+            prompt: prompt,
+            max_tokens: 2000,
+            temperature: 0.2
+          })
+        });
+        const bedrockResponse = await (this.client as BedrockRuntimeClient).send(command);
+        response = new TextDecoder().decode(bedrockResponse.body);
+      } else {
+        // OpenAI 实现
+        const openaiResponse = await (this.client as OpenAI).chat.completions.create({
+          model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的代码修复助手，擅长修复 ESLint 错误。请只返回修复后的那一行代码，不要返回上下文代码，不要包含任何 markdown 格式标记，也不要包含解释或其他内容。'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
           temperature: 0.2
-        })
-      });
-      const bedrockResponse = await (this.client as BedrockRuntimeClient).send(command);
-      response = new TextDecoder().decode(bedrockResponse.body);
-    } else {
-      // OpenAI 实现
-      const openaiResponse = await (this.client as OpenAI).chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: '你是一个专业的代码修复助手，擅长修复 ESLint 错误。请只返回修复后的那一行代码，不要返回上下文代码，不要包含任何 markdown 格式标记，也不要包含解释或其他内容。'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.2
-      });
-      response = openaiResponse.choices[0]?.message?.content || '';
-    }
+        });
+        response = openaiResponse.choices[0]?.message?.content || '';
+      }
 
-    // 处理 markdown 格式
-    response = response.replace(/^```(typescript)?\n/, '').replace(/\n```$/, '').trim();
+      // 处理 markdown 格式
+      response = response.replace(/^```(typescript)?\n/, '').replace(/\n```$/, '').trim();
 
-    // 打印代码对比
-    console.log('\n📝 代码修复对比:');
-    console.log('\n原始代码:');
-    console.log('```typescript');
-    errorSnippets.forEach(snippet => console.log(snippet.code));
-    console.log('```\n');
-    
-    console.log('修复后代码:');
-    console.log('```typescript');
-    console.log(response);
-    console.log('```\n');
+      // 打印代码对比
+      console.log(`\n📝 第 ${snippet.line} 行代码修复对比:`);
+      console.log('\n原始代码:');
+      console.log('```typescript');
+      console.log(snippet.code);
+      console.log('```\n');
+      
+      console.log('修复后代码:');
+      console.log('```typescript');
+      console.log(response);
+      console.log('```\n');
+
+      return {
+        line: snippet.line,
+        fixedCode: response
+      };
+    }));
+
+    // 按行号排序
+    fixedLines.sort((a, b) => a.line - b.line);
 
     // 构建修复后的代码
     let fixedCode = '';
     let lastEndLine = 0;
 
-    for (const snippet of errorSnippets) {
+    for (const fixedLine of fixedLines) {
       // 如果当前错误与上一个错误之间有代码，保留原代码
-      if (snippet.line > lastEndLine + 1) {
-        const originalLines = snippet.code.split('\n');
-        fixedCode += originalLines.slice(0, snippet.line - lastEndLine - 1).join('\n') + '\n';
+      if (fixedLine.line > lastEndLine + 1) {
+        const originalLines = errorSnippets[0].code.split('\n');
+        fixedCode += originalLines.slice(0, fixedLine.line - lastEndLine - 1).join('\n') + '\n';
       }
 
       // 添加修复后的代码
-      fixedCode += response + '\n';
-      lastEndLine = snippet.line;
+      fixedCode += fixedLine.fixedCode + '\n';
+      lastEndLine = fixedLine.line;
     }
 
     return fixedCode;
