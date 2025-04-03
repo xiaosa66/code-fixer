@@ -290,6 +290,18 @@ export class AiLiteLLM {
     // 处理 markdown 格式
     response = response.replace(/^```(typescript)?\n/, '').replace(/\n```$/, '').trim();
 
+    // 打印代码对比
+    console.log('\n📝 代码修复对比:');
+    console.log('\n原始代码:');
+    console.log('```typescript');
+    errorSnippets.forEach(snippet => console.log(snippet.code));
+    console.log('```\n');
+    
+    console.log('修复后代码:');
+    console.log('```typescript');
+    console.log(response);
+    console.log('```\n');
+
     // 构建修复后的代码
     let fixedCode = '';
     let lastEndLine = 0;
