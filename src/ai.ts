@@ -304,7 +304,23 @@ export class AiLiteLLM {
     console.log(response);
     console.log('```\n');
 
-    return response;
+    // 构建修复后的代码
+    let fixedCode = '';
+    let lastEndLine = 0;
+
+    for (const snippet of errorSnippets) {
+      // 如果当前错误与上一个错误之间有代码，保留原代码
+      if (snippet.line > lastEndLine + 1) {
+        const originalLines = snippet.code.split('\n');
+        fixedCode += originalLines.slice(0, snippet.line - lastEndLine - 1).join('\n') + '\n';
+      }
+
+      // 添加修复后的代码
+      fixedCode += response + '\n';
+      lastEndLine = snippet.line;
+    }
+
+    return fixedCode;
   }
 
   async addTypeScriptTypes(code: string): Promise<string> {
