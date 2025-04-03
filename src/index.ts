@@ -229,7 +229,8 @@ async function fixESLintErrors(
               code: errorLineCode,
               context: contextCode,
               line: line,
-              column: column
+              column: column,
+              sourceText: sourceText
             };
 
             return errorInfo;
@@ -238,9 +239,10 @@ async function fixESLintErrors(
           console.log('errorSnippets:', errorSnippets);
 
           // 发送错误片段给AI修复
+   
           let aiResponse = await aiClient.fixESLintErrors(errorSnippets);
           // 移除代码块标记
-          fixedCode = aiResponse.replace(/^```(typescript)?\n/, '').replace(/\n```$/, '');
+          fixedCode = aiResponse
         } else {
           // 使用 ESLint 的自动修复（注意：outputFixes 为同步方法）
           ESLint.outputFixes([result]);
