@@ -253,7 +253,7 @@ export class AiLiteLLM {
     ).join('\n\n');
 
     const prompt = `请修复以下ESLint错误:\n\n${errorDescriptions}\n\n` +
-      `请只返回修复后的代码片段，不要包含解释或其他内容。`;
+      `请直接返回修复后的代码片段，不要包含任何 markdown 格式标记（如 \`\`\`typescript 或 \`\`\`），也不要包含解释或其他内容。`;
 
     let response: string;
     if (this.useBedrock) {
