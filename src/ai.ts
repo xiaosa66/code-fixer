@@ -244,6 +244,7 @@ export class AiLiteLLM {
     context: string;
     line: number;
     column: number;
+    sourceText?: string;  // 添加源文件文本
   }>): Promise<string> {
     // 为每个错误单独获取修复结果
     const fixedLines = await Promise.all(errorSnippets.map(async (snippet) => {
@@ -313,59 +314,23 @@ export class AiLiteLLM {
     // 按行号排序
     fixedLines.sort((a, b) => a.line - b.line);
 
-    // 获取所有原始代码行
-    const allOriginalLines = errorSnippets.reduce((lines, snippet) => {
-      const snippetLines = snippet.code.split('\n');
-      // 确保不重复添加相同的行
-      snippetLines.forEach((line, index) => {
-        const lineNumber = snippet.line - snippetLines.length + index + 1;
-        if (!lines[lineNumber]) {
-          lines[lineNumber] = line;
-        }
-      });
-      return lines;
-    }, {} as Record<number, string>);
+    // 获取源文件的所有行
+    const sourceLines = errorSnippets[0].sourceText?.split('\n') || [];
+    const fixedLineNumbers = new Set(fixedLines.map(f => f.line));
 
     // 构建修复后的代码
     let fixedCode = '';
-    let lastLine = 0;
-
-    // 处理文件开头的代码
-    const firstErrorLine = fixedLines[0]?.line || 0;
-    if (firstErrorLine > 1) {
-      for (let i = 1; i < firstErrorLine; i++) {
-        if (allOriginalLines[i]) {
-          fixedCode += allOriginalLines[i] + '\n';
-        }
-      }
-    }
-
-    // 处理错误行和错误行之间的代码
-    for (let i = 0; i < fixedLines.length; i++) {
-      const fixedLine = fixedLines[i];
-      const nextFixedLine = fixedLines[i + 1];
-      
-      // 添加修复后的错误行
-      fixedCode += fixedLine.fixedCode + '\n';
-      
-      // 如果还有下一个错误行，处理两个错误行之间的代码
-      if (nextFixedLine) {
-        for (let j = fixedLine.line + 1; j < nextFixedLine.line; j++) {
-          if (allOriginalLines[j]) {
-            fixedCode += allOriginalLines[j] + '\n';
-          }
-        }
-      }
-    }
-
-    // 处理最后一个错误行之后的代码
-    const lastErrorLine = fixedLines[fixedLines.length - 1]?.line || 0;
-    const maxLine = Math.max(...Object.keys(allOriginalLines).map(Number));
-    if (lastErrorLine < maxLine) {
-      for (let i = lastErrorLine + 1; i <= maxLine; i++) {
-        if (allOriginalLines[i]) {
-          fixedCode += allOriginalLines[i] + '\n';
-        }
+    
+    // 遍历所有行，对错误行进行替换
+    for (let i = 0; i < sourceLines.length; i++) {
+      const lineNumber = i + 1;  // 1-based line number
+      if (fixedLineNumbers.has(lineNumber)) {
+        // 如果是错误行，使用修复后的代码
+        const fixedLine = fixedLines.find(f => f.line === lineNumber);
+        fixedCode += fixedLine?.fixedCode + '\n';
+      } else {
+        // 如果不是错误行，保留原始代码
+        fixedCode += sourceLines[i] + '\n';
       }
     }
 
